@@ -5,6 +5,7 @@ class KanaSequence {
   constructor(word) {
     
     this.word = word;
+    self = this;
 
     // カタカナのシーケンスとひとつ前（つまり並び順でいうとひとつ後ろ）に取得したKanaオブジェクトを渡し、
     // カタカナシーケンスから次のKanaオブジェクトと、その残りの部分を返す
@@ -12,18 +13,18 @@ class KanaSequence {
       if (word.length > 1) {
         const chs = word.slice(-2);
         if (Kana.map[chs]) {
-          return [ new Kana.Double(chs), word.slice(0, -2) ]
+          return [ new Kana.Double(self, chs), word.slice(0, -2) ]
         }
       }
       const ch = word.slice(-1);
       const remain = word.slice(0, -1);
       switch (ch) {
-        case 'ッ':
-          return [ new Kana.Ltsu(prevKana), remain ]
-        case 'ン':
-          return [ new Kana.Nn(prevKana), remain ]
+        case "ッ":
+          return [ new Kana.Ltu(self, prevKana), remain ]
+        case "ン":
+          return [ new Kana.Nn(self, prevKana), remain ]
         default:
-          return [ new Kana.Single(ch), remain ];
+          return [ new Kana.Single(self, ch), remain ];
       }
     };
 
@@ -38,21 +39,92 @@ class KanaSequence {
 
     this.kanas = toKanaArray(word);
   }
+
+  // 指定したカナより後ろ（指定したカナを含まない）のカナ全てのデフォルトローマ字をつなげて返す。
+  getDefaultRomanAfter(kana) {
+    return this.kanas.slice(this.kanas.indexOf(kana) + 1).reduce(function(s, kana) {
+      return s + kana.getDefaultRoman();
+    }, "");
+  }
 }
+
+KanaSequence.test = function(s) {
+  const seq = new KanaSequence(s);
+  return seq.kanas.map(kana => kana.getDefaultRomanAfterThis());
+};
 
 // ひとつのカナを表す
 // ただし、ここでいう「ひとつ」とはローマ字に変換する際の最小単位であり、
 // 拗音はひとつのKanaオブジェクトとして扱う
 // また、「っ」と「ん」はそれぞれひとつのKanaオブジェクトとして扱う
 class Kana {
+  constructor(seq) {
+    this.seq = seq;
+  }
+  getDefaultRoman() {
+    throw "unsupported operation";
+  }
+  getDefaultRomanAfterThis() {
+    return this.seq.getDefaultRomanAfter(this);
+  }
 }
+
 Kana.Single = class extends Kana {
+  constructor(seq, ch) {
+    super(seq);
+    this.ch = ch;
+    this.romans = Kana.map[ch];
+  }
+  getDefaultRoman() {
+    return this.romans[0];
+  }
 }
+
 Kana.Double = class extends Kana {
+  constructor(seq, chs) {
+    super(seq);
+    this.chs = chs;
+    this.romans = Kana.map[chs];
+  }
+  getDefaultRoman() {
+    return this.romans[0];
+  }
 }
-Kana.Ltsu = class extends Kana {
+
+Kana.Ltu = class extends Kana {
+
+  constructor(seq, prev) {
+    super(seq);
+    this.prev = prev;
+    this.romans = ["ltu", "xtu", "ltsu", "xtsu"];
+  }
+
+  // 「っ」は、後ろにカナが続き、かつそれがア行でもナ行でもない場合、後ろのカナのローマ字の子音先頭ひと文字を重ねる
+  // そうでない場合は単独入力する
+  getDefaultRoman() {
+    if (this.prev) {
+      const c = this.prev.getDefaultRoman().charAt(0);
+      if (!"aiueon".includes(c)) {
+        return c;
+      }
+    }
+    return this.romans[0];
+  }
 }
+
 Kana.Nn = class extends Kana {
+  
+  constructor(seq, prev) {
+    super(seq);
+    this.prev = prev;
+    this.allowSingleN = prev && !"aiueony".includes(prev.getDefaultRoman().charAt(0));
+  }
+
+  // 「ん」は、後ろにカナが続き、かつそれがア行でもナ行でもヤ行でもない場合、nひとつでも許される
+  // そうでない場合はnnと重ねる必要がある
+  getDefaultRoman() {
+    return this.allowSingleN ? "n" : "nn";
+  }
 }
 
 Kana.map = {
